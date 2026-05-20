@@ -1,478 +1,236 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Key, Printer, ScanLine, History, User, Clock, CheckCircle2, XCircle, AlertCircle, X, QrCode } from 'lucide-react';
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Pengurusan Kunci</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
-const INITIAL_KEYS = [
-  { id: 'PSV1', name: 'BILIK PSV 1', status: 'available', currentBorrower: null, time: null },
-  { id: 'PSV2', name: 'BILIK PSV 2', status: 'available', currentBorrower: null, time: null },
-  { id: 'BENGKEL', name: 'BENGKEL PSV', status: 'available', currentBorrower: null, time: null },
-  { id: 'STOR', name: 'BILIK STOR', status: 'available', currentBorrower: null, time: null },
-];
-
-export default function App() {
-  const [keys, setKeys] = useState(INITIAL_KEYS);
-  const [history, setHistory] = useState([]);
-  
-  // Form State
-  const [selectedKeyId, setSelectedKeyId] = useState('');
-  const [borrowerName, setBorrowerName] = useState('');
-  const [actionType, setActionType] = useState('borrow'); // 'borrow' or 'return'
-  
-  // Scanner State
-  const [isScanning, setIsScanning] = useState(false);
-  const [scannerLoaded, setScannerLoaded] = useState(false);
-  const [scanError, setScanError] = useState('');
-  const scannerRef = useRef(null);
-
-  // QR Print State
-  const [showQRModal, setShowQRModal] = useState(false);
-  const [printType, setPrintType] = useState('history'); // 'history' or 'qr'
-
-  // Load external scanner library
-  useEffect(() => {
-    if (window.Html5QrcodeScanner) {
-      setScannerLoaded(true);
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = "https://unpkg.com/html5-qrcode";
-    script.async = true;
-    script.onload = () => setScannerLoaded(true);
-    document.body.appendChild(script);
-
-    return () => {
-      if (document.body.contains(script)) {
-        document.body.removeChild(script);
-      }
-    };
-  }, []);
-
-  // Handle Scanner Lifecycle
-  useEffect(() => {
-    if (isScanning && scannerLoaded) {
-      setScanError('');
-      // Use Html5Qrcode instead of Scanner for better programmatic control in React modals
-      const html5QrCode = new window.Html5Qrcode("reader");
-      scannerRef.current = html5QrCode;
-
-      html5QrCode.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        (decodedText) => {
-          handleSuccessfulScan(decodedText);
-        },
-        (errorMessage) => {
-          // ignore background scan errors
-        }
-      ).catch((err) => {
-        setScanError("Kamera tidak dapat diakses atau tiada kebenaran.");
-        console.error(err);
-      });
-
-      return () => {
-        if (scannerRef.current && scannerRef.current.isScanning) {
-          scannerRef.current.stop().then(() => {
-            scannerRef.current.clear();
-          }).catch(console.error);
-        }
-      };
-    }
-  }, [isScanning, scannerLoaded]);
-
-  const handleSuccessfulScan = (scannedText) => {
-    const matchedKey = keys.find(k => k.id.toUpperCase() === scannedText.toUpperCase());
-    if (matchedKey) {
-      setSelectedKeyId(matchedKey.id);
-      // Auto-set action based on current status
-      setActionType(matchedKey.status === 'available' ? 'borrow' : 'return');
-      
-      // Stop scanner
-      if (scannerRef.current && scannerRef.current.isScanning) {
-        scannerRef.current.stop().catch(console.error);
-      }
-      setIsScanning(false);
-      alert(`Berjaya imbas! Kunci: ${matchedKey.name}`);
-    } else {
-      setScanError(`Kod "${scannedText}" tidak dikenali dalam sistem.`);
-    }
-  };
-
-  const stopScanning = () => {
-    if (scannerRef.current && scannerRef.current.isScanning) {
-      scannerRef.current.stop().catch(console.error);
-    }
-    setIsScanning(false);
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!selectedKeyId) {
-      alert("Sila pilih kunci.");
-      return;
-    }
-    
-    const key = keys.find(k => k.id === selectedKeyId);
-    
-    if (actionType === 'borrow') {
-      if (key.status === 'borrowed') {
-        alert("Kunci ini sedang dipinjam!");
-        return;
-      }
-      if (!borrowerName.trim()) {
-        alert("Sila masukkan nama peminjam.");
-        return;
-      }
-    } else {
-      if (key.status === 'available') {
-        alert("Kunci ini belum dipinjam, tidak boleh dipulangkan.");
-        return;
-      }
-    }
-
-    const timestamp = new Date().toLocaleString('ms-MY');
-    const newRecord = {
-      id: Date.now(),
-      keyName: key.name,
-      action: actionType === 'borrow' ? 'Pinjaman' : 'Pemulangan',
-      person: actionType === 'borrow' ? borrowerName : key.currentBorrower,
-      time: timestamp
-    };
-
-    // Update Keys State
-    setKeys(prevKeys => prevKeys.map(k => {
-      if (k.id === selectedKeyId) {
-        return {
-          ...k,
-          status: actionType === 'borrow' ? 'borrowed' : 'available',
-          currentBorrower: actionType === 'borrow' ? borrowerName : null,
-          time: actionType === 'borrow' ? timestamp : null
-        };
-      }
-      return k;
-    }));
-
-    // Update History State
-    setHistory([newRecord, ...history]);
-
-    // Reset Form
-    setBorrowerName('');
-    setSelectedKeyId('');
-    setActionType('borrow');
-  };
-
-  const handlePrintPDF = (type) => {
-    setPrintType(type);
-    // Let state update before triggering print
-    setTimeout(() => {
-      window.print();
-    }, 100);
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
-      {/* Print Styles */}
-      <style>{`
+    <style>
         @media print {
-          body * { visibility: hidden; }
-          .print-section, .print-section * { visibility: visible; }
-          .print-section { position: absolute; left: 0; top: 0; width: 100%; padding: 20px; background: white; z-index: 9999; }
-          .no-print { display: none !important; }
-          .print-header { display: block !important; margin-bottom: 20px; text-align: center; }
+            body * { visibility: hidden; }
+            .print-section, .print-section * { visibility: visible; }
+            .print-section { position: absolute; left: 0; top: 0; width: 100%; padding: 20px; background: white; z-index: 9999; }
+            .no-print { display: none !important; }
+            .print-header { display: block !important; margin-bottom: 20px; text-align: center; }
         }
         .print-header { display: none; }
-      `}</style>
+    </style>
+</head>
+<body class="bg-slate-50 font-sans text-slate-800">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
 
-      {/* Navbar - No Print */}
-      <nav className="bg-indigo-600 text-white p-4 shadow-md no-print">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Key className="w-6 h-6" />
-            <h1 className="text-xl font-bold tracking-wide">Sistem Pengurusan Kunci</h1>
-          </div>
-          <button 
-            onClick={() => setShowQRModal(true)}
-            className="flex items-center gap-2 bg-indigo-500 hover:bg-indigo-700 px-3 py-2 rounded-md transition-colors text-sm font-medium"
-          >
-            <QrCode className="w-4 h-4" />
-            Jana Kod QR
-          </button>
-        </div>
-      </nav>
+        const INITIAL_KEYS = [
+            { id: 'PSV1', name: 'BILIK PSV 1', status: 'available', currentBorrower: null, time: null },
+            { id: 'PSV2', name: 'BILIK PSV 2', status: 'available', currentBorrower: null, time: null },
+            { id: 'BENGKEL', name: 'BENGKEL PSV', status: 'available', currentBorrower: null, time: null },
+            { id: 'STOR', name: 'BILIK STOR', status: 'available', currentBorrower: null, time: null },
+        ];
 
-      <main className="max-w-6xl mx-auto p-4 space-y-6 mt-4">
-        
-        {/* Top Section: Dashboard & Actions - No Print */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 no-print">
-          
-          {/* Key Status Dashboard */}
-          <div className="md:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 border-b pb-2">
-              <Key className="w-5 h-5 text-indigo-500" />
-              Status Kunci Semasa
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {keys.map(key => (
-                <div key={key.id} className={`p-4 rounded-lg border-l-4 shadow-sm flex flex-col justify-between ${key.status === 'available' ? 'bg-emerald-50 border-emerald-500' : 'bg-rose-50 border-rose-500'}`}>
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="font-bold text-slate-700">{key.name}</span>
-                    {key.status === 'available' ? (
-                      <span className="text-xs font-semibold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> Tersedia
-                      </span>
-                    ) : (
-                      <span className="text-xs font-semibold bg-rose-100 text-rose-700 px-2 py-1 rounded-full flex items-center gap-1">
-                        <XCircle className="w-3 h-3" /> Dipinjam
-                      </span>
+        function App() {
+            const [keys, setKeys] = useState(INITIAL_KEYS);
+            const [history, setHistory] = useState([]);
+            const [selectedKeyId, setSelectedKeyId] = useState('');
+            const [borrowerName, setBorrowerName] = useState('');
+            const [actionType, setActionType] = useState('borrow');
+            const [isScanning, setIsScanning] = useState(false);
+            const [scanError, setScanError] = useState('');
+            const scannerRef = useRef(null);
+            const [showQRModal, setShowQRModal] = useState(false);
+            const [printType, setPrintType] = useState('history');
+
+            useEffect(() => {
+                if (isScanning && window.Html5Qrcode) {
+                    setScanError('');
+                    const html5QrCode = new window.Html5Qrcode("reader");
+                    scannerRef.current = html5QrCode;
+
+                    html5QrCode.start(
+                        { facingMode: "environment" },
+                        { fps: 10, qrbox: { width: 250, height: 250 } },
+                        (decodedText) => {
+                            const matchedKey = keys.find(k => k.id.toUpperCase() === decodedText.toUpperCase());
+                            if (matchedKey) {
+                                setSelectedKeyId(matchedKey.id);
+                                setActionType(matchedKey.status === 'available' ? 'borrow' : 'return');
+                                html5QrCode.stop().catch(console.error);
+                                setIsScanning(false);
+                                alert(`Berjaya imbas! Kunci: ${matchedKey.name}`);
+                            } else {
+                                setScanError(`Kod "${decodedText}" tidak dikenali.`);
+                            }
+                        },
+                        (errorMessage) => {}
+                    ).catch((err) => {
+                        setScanError("Kamera tidak dapat diakses.");
+                    });
+
+                    return () => {
+                        if (scannerRef.current && scannerRef.current.isScanning) {
+                            scannerRef.current.stop().then(() => scannerRef.current.clear()).catch(console.error);
+                        }
+                    };
+                }
+            }, [isScanning, keys]);
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (!selectedKeyId) return alert("Sila pilih kunci.");
+                const key = keys.find(k => k.id === selectedKeyId);
+                
+                if (actionType === 'borrow') {
+                    if (key.status === 'borrowed') return alert("Kunci sedang dipinjam!");
+                    if (!borrowerName.trim()) return alert("Sila masukkan nama peminjam.");
+                } else {
+                    if (key.status === 'available') return alert("Kunci belum dipinjam.");
+                }
+
+                const timestamp = new Date().toLocaleString('ms-MY');
+                const newRecord = {
+                    id: Date.now(),
+                    keyName: key.name,
+                    action: actionType === 'borrow' ? 'Pinjaman' : 'Pemulangan',
+                    person: actionType === 'borrow' ? borrowerName : key.currentBorrower,
+                    time: timestamp
+                };
+
+                setKeys(prevKeys => prevKeys.map(k => k.id === selectedKeyId ? {
+                    ...k,
+                    status: actionType === 'borrow' ? 'borrowed' : 'available',
+                    currentBorrower: actionType === 'borrow' ? borrowerName : null,
+                    time: actionType === 'borrow' ? timestamp : null
+                } : k));
+
+                setHistory([newRecord, ...history]);
+                setBorrowerName('');
+                setSelectedKeyId('');
+                setActionType('borrow');
+            };
+
+            return (
+                <div className="min-h-screen">
+                    <nav className="bg-indigo-600 text-white p-4 shadow-md no-print">
+                        <div className="max-w-6xl mx-auto flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <i className="fa-solid fa-key text-xl"></i>
+                                <h1 className="text-xl font-bold">Sistem Pengurusan Kunci</h1>
+                            </div>
+                            <button onClick={() => setShowQRModal(true)} className="flex items-center gap-2 bg-indigo-500 hover:bg-indigo-700 px-3 py-2 rounded-md">
+                                <i className="fa-solid fa-qrcode"></i> Jana Kod QR
+                            </button>
+                        </div>
+                    </nav>
+
+                    <main className="max-w-6xl mx-auto p-4 space-y-6 mt-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 no-print">
+                            <div className="md:col-span-2 bg-white rounded-xl shadow-sm border p-5">
+                                <h2 className="text-lg font-semibold mb-4 border-b pb-2"><i className="fa-solid fa-key text-indigo-500"></i> Status Kunci Semasa</h2>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    {keys.map(key => (
+                                        <div key={key.id} className={`p-4 rounded-lg border-l-4 ${key.status === 'available' ? 'bg-emerald-50 border-emerald-500' : 'bg-rose-50 border-rose-500'}`}>
+                                            <div className="flex justify-between items-start mb-2">
+                                                <span className="font-bold">{key.name}</span>
+                                                <span className={`text-xs font-semibold px-2 py-1 rounded-full ${key.status === 'available' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                                    {key.status === 'available' ? 'Tersedia' : 'Dipinjam'}
+                                                </span>
+                                            </div>
+                                            {key.status === 'borrowed' && (
+                                                <div className="text-sm mt-2 space-y-1 bg-white/60 p-2 rounded">
+                                                    <div><i className="fa-solid fa-user text-slate-400"></i> {key.currentBorrower}</div>
+                                                    <div className="text-xs text-slate-500"><i className="fa-regular fa-clock text-slate-400"></i> {key.time}</div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="bg-white rounded-xl shadow-sm border p-5">
+                                <h2 className="text-lg font-semibold mb-4 border-b pb-2"><i className="fa-solid fa-clock-rotate-left text-indigo-500"></i> Transaksi</h2>
+                                <form onSubmit={handleSubmit} className="space-y-4">
+                                    <div className="flex gap-2">
+                                        <button type="button" onClick={() => setActionType('borrow')} className={`flex-1 py-2 rounded-md ${actionType === 'borrow' ? 'bg-indigo-600 text-white' : 'bg-slate-100'}`}>Pinjam</button>
+                                        <button type="button" onClick={() => setActionType('return')} className={`flex-1 py-2 rounded-md ${actionType === 'return' ? 'bg-indigo-600 text-white' : 'bg-slate-100'}`}>Pulang</button>
+                                    </div>
+                                    <button type="button" onClick={() => setIsScanning(true)} className="w-full bg-indigo-50 text-indigo-700 py-3 rounded-lg font-bold my-4 border-2 border-indigo-200">
+                                        <i className="fa-solid fa-barcode"></i> Imbas Kod
+                                    </button>
+                                    <select value={selectedKeyId} onChange={(e) => setSelectedKeyId(e.target.value)} className="w-full p-2 border rounded-md" required>
+                                        <option value="" disabled>-- Pilih Kunci Manual --</option>
+                                        {keys.map(k => (
+                                            <option key={k.id} value={k.id} disabled={actionType === 'borrow' ? k.status === 'borrowed' : k.status === 'available'}>
+                                                {k.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {actionType === 'borrow' && (
+                                        <input type="text" value={borrowerName} onChange={(e) => setBorrowerName(e.target.value)} placeholder="Nama Peminjam" className="w-full p-2 border rounded-md" required />
+                                    )}
+                                    <button type="submit" className="w-full bg-slate-800 text-white py-2.5 rounded-md">Sahkan</button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div className={`bg-white rounded-xl shadow-sm border overflow-hidden ${printType === 'history' ? 'print-section' : ''}`}>
+                            <div className="p-5 border-b flex justify-between bg-slate-50 no-print">
+                                <h2 className="text-lg font-semibold"><i className="fa-solid fa-list text-indigo-500"></i> Sejarah</h2>
+                                <button onClick={() => { setPrintType('history'); setTimeout(() => window.print(), 100); }} className="bg-rose-600 text-white px-4 py-2 rounded-md">Cetak PDF</button>
+                            </div>
+                            <table className="w-full text-left">
+                                <thead><tr className="bg-slate-100 border-b"><th className="p-4">Masa</th><th className="p-4">Kunci</th><th className="p-4">Tindakan</th><th className="p-4">Nama</th></tr></thead>
+                                <tbody>
+                                    {history.map((record, i) => (
+                                        <tr key={record.id} className="border-b">
+                                            <td className="p-4">{record.time}</td>
+                                            <td className="p-4">{record.keyName}</td>
+                                            <td className="p-4">{record.action}</td>
+                                            <td className="p-4">{record.person}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </main>
+
+                    {isScanning && (
+                        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 no-print">
+                            <div className="bg-white rounded-xl w-full max-w-md overflow-hidden">
+                                <div className="p-4 flex justify-between"><h3 className="font-bold">Imbas Kod</h3><button onClick={() => setIsScanning(false)}><i className="fa-solid fa-xmark text-xl"></i></button></div>
+                                <div id="reader" className="w-full h-64 bg-black"></div>
+                            </div>
+                        </div>
                     )}
-                  </div>
-                  
-                  {key.status === 'borrowed' && (
-                    <div className="text-sm text-slate-600 mt-2 space-y-1 bg-white/60 p-2 rounded">
-                      <div className="flex items-center gap-1">
-                        <User className="w-4 h-4 text-slate-400" /> 
-                        <span className="font-medium truncate">{key.currentBorrower}</span>
-                      </div>
-                      <div className="flex items-center gap-1 text-xs text-slate-500">
-                        <Clock className="w-4 h-4 text-slate-400" /> 
-                        {key.time}
-                      </div>
-                    </div>
-                  )}
-                  {key.status === 'available' && (
-                     <div className="text-sm text-slate-400 mt-2 italic p-2">
-                       Sedia untuk dipinjam
-                     </div>
-                  )}
+                    
+                    {showQRModal && (
+                        <div className={`fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 ${printType === 'qr' ? 'print-section bg-white' : 'no-print'}`}>
+                            <div className={`bg-white rounded-xl w-full max-w-4xl overflow-hidden ${printType === 'qr' ? 'shadow-none w-full h-full' : ''}`}>
+                                <div className="p-4 flex justify-between no-print"><h3 className="font-bold">Tag Kod QR</h3><button onClick={() => setShowQRModal(false)}><i className="fa-solid fa-xmark text-xl"></i></button></div>
+                                <div className="p-6 grid grid-cols-2 sm:grid-cols-4 gap-6 text-center">
+                                    {INITIAL_KEYS.map(key => (
+                                        <div key={key.id} className="border-2 border-dashed p-4 rounded-lg">
+                                            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${key.id}`} alt="QR" className="mx-auto w-32 h-32 mb-2"/>
+                                            <p className="font-bold">{key.name}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="p-4 flex justify-end no-print">
+                                    <button onClick={() => { setPrintType('qr'); setTimeout(() => window.print(), 100); }} className="bg-indigo-600 text-white px-6 py-2 rounded-md">Cetak Tag (PDF)</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Action Form */}
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 border-b pb-2">
-              <History className="w-5 h-5 text-indigo-500" />
-              Rekod Transaksi
-            </h2>
-            
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Tindakan</label>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setActionType('borrow')}
-                    className={`flex-1 py-2 rounded-md font-medium transition-colors ${actionType === 'borrow' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                  >
-                    Pinjam
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActionType('return')}
-                    className={`flex-1 py-2 rounded-md font-medium transition-colors ${actionType === 'return' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                  >
-                    Pulang
-                  </button>
-                </div>
-              </div>
-
-              {/* Butang Scan Utama yang Lebih Besar */}
-              <button
-                type="button"
-                onClick={() => setIsScanning(true)}
-                className="w-full bg-indigo-50 text-indigo-700 py-3 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-indigo-100 transition-colors border-2 border-indigo-200 shadow-sm my-4"
-              >
-                <ScanLine className="w-6 h-6" /> 
-                Guna Kamera: Imbas Kod Bar / QR
-              </button>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Atau Pilih Kunci Secara Manual</label>
-                <select 
-                  value={selectedKeyId} 
-                  onChange={(e) => setSelectedKeyId(e.target.value)}
-                  className="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none bg-slate-50"
-                  required
-                >
-                  <option value="" disabled>-- Sila Pilih --</option>
-                  {keys.map(k => (
-                    <option key={k.id} value={k.id} disabled={actionType === 'borrow' ? k.status === 'borrowed' : k.status === 'available'}>
-                      {k.name} {actionType === 'borrow' && k.status === 'borrowed' ? '(Sedang Dipinjam)' : ''}
-                      {actionType === 'return' && k.status === 'available' ? '(Tiada Rekod Pinjaman)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {actionType === 'borrow' && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Nama Peminjam</label>
-                  <input 
-                    type="text" 
-                    value={borrowerName}
-                    onChange={(e) => setBorrowerName(e.target.value)}
-                    placeholder="Masukkan nama penuh"
-                    className="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none"
-                    required
-                  />
-                </div>
-              )}
-
-              <button 
-                type="submit" 
-                className="w-full bg-slate-800 text-white py-2.5 rounded-md font-semibold hover:bg-slate-700 transition-colors mt-2"
-              >
-                Sahkan Transaksi
-              </button>
-            </form>
-          </div>
-        </div>
-
-        {/* History Table - This is the Printable Section */}
-        <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden ${printType === 'history' ? 'print-section' : ''}`}>
-          
-          <div className="print-header">
-            <h1 className="text-2xl font-bold">Laporan Sejarah Pinjaman Kunci</h1>
-            <p className="text-gray-500">Dijana pada: {new Date().toLocaleString('ms-MY')}</p>
-          </div>
-
-          <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50 no-print">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <History className="w-5 h-5 text-indigo-500" />
-              Sejarah Transaksi
-            </h2>
-            <button 
-              onClick={() => handlePrintPDF('history')}
-              className="flex items-center gap-2 bg-rose-600 text-white px-4 py-2 rounded-md font-medium hover:bg-rose-700 transition-colors shadow-sm"
-            >
-              <Printer className="w-4 h-4" />
-              Cetak PDF
-            </button>
-          </div>
-          
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-100 text-slate-600 text-sm border-b border-slate-200">
-                  <th className="p-4 font-semibold">Bil</th>
-                  <th className="p-4 font-semibold">Tarikh & Masa</th>
-                  <th className="p-4 font-semibold">Kunci</th>
-                  <th className="p-4 font-semibold">Tindakan</th>
-                  <th className="p-4 font-semibold">Nama Individu</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" className="p-8 text-center text-slate-400">
-                      Tiada rekod transaksi setakat ini.
-                    </td>
-                  </tr>
-                ) : (
-                  history.map((record, index) => (
-                    <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50">
-                      <td className="p-4 text-slate-500">{history.length - index}</td>
-                      <td className="p-4 text-sm">{record.time}</td>
-                      <td className="p-4 font-medium">{record.keyName}</td>
-                      <td className="p-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${record.action === 'Pinjaman' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                          {record.action}
-                        </span>
-                      </td>
-                      <td className="p-4">{record.person}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table >
-          </div>
-        </div>
-
-      </main>
-
-      {/* Barcode Scanner Modal - No Print */}
-      {isScanning && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 no-print">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
-            <div className="p-4 bg-slate-100 border-b flex justify-between items-center">
-              <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                <ScanLine className="w-5 h-5 text-indigo-600" />
-                Imbas Kod Kunci
-              </h3>
-              <button onClick={stopScanning} className="text-slate-500 hover:text-rose-500">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <div className="p-4 bg-black relative">
-              <div id="reader" className="w-full h-64 bg-black rounded overflow-hidden"></div>
-            </div>
-            
-            <div className="p-4 bg-slate-50 border-t space-y-3 text-sm text-slate-600 text-center">
-              {scanError && (
-                <div className="text-rose-600 flex items-center justify-center gap-1 bg-rose-50 p-2 rounded">
-                  <AlertCircle className="w-4 h-4" /> {scanError}
-                </div>
-              )}
-              <p>Halakan kamera pada kod bar/QR yang terdapat pada tag kunci.</p>
-              <div className="text-xs text-slate-400 italic bg-white p-2 rounded border border-slate-200">
-                <strong>Info Demo:</strong> Gunakan penjana Kod QR luaran dengan teks: <br/>
-                <span className="font-mono text-indigo-500">PSV1</span>, <span className="font-mono text-indigo-500">PSV2</span>, <span className="font-mono text-indigo-500">BENGKEL</span>, atau <span className="font-mono text-indigo-500">STOR</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* QR Code Generation Modal */}
-      {showQRModal && (
-        <div className={`fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 ${printType === 'qr' ? 'print-section bg-white' : 'no-print'}`}>
-          <div className={`bg-white rounded-xl shadow-xl w-full max-w-4xl overflow-hidden flex flex-col ${printType === 'qr' ? 'shadow-none w-full h-full' : ''}`}>
-            <div className="p-4 bg-slate-100 border-b flex justify-between items-center no-print">
-              <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                <QrCode className="w-5 h-5 text-indigo-600" />
-                Tag Kod QR Kunci
-              </h3>
-              <button onClick={() => setShowQRModal(false)} className="text-slate-500 hover:text-rose-500">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <div className="p-6 overflow-y-auto max-h-[70vh]">
-              <div className="print-header">
-                <h1 className="text-2xl font-bold">Tag Kod QR Kunci Bilik / Bengkel</h1>
-                <p className="text-gray-500">Gunting dan tampal kod ini pada kunci atau tag kunci yang berkenaan untuk tujuan imbasan.</p>
-              </div>
-              
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-center">
-                {INITIAL_KEYS.map(key => (
-                  <div key={key.id} className="border-2 border-dashed border-slate-300 p-4 rounded-lg flex flex-col items-center justify-center gap-3 bg-white">
-                    <img 
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${key.id}`} 
-                      alt={`QR Code ${key.name}`}
-                      className="w-32 h-32 border border-slate-100 shadow-sm rounded"
-                    />
-                    <div>
-                      <p className="font-bold text-lg text-slate-800 leading-tight">{key.name}</p>
-                      <p className="text-xs text-slate-500 font-mono mt-1">ID: {key.id}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            
-            <div className="p-4 bg-slate-50 border-t flex justify-end no-print">
-              <button 
-                onClick={() => handlePrintPDF('qr')}
-                className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-2 rounded-md font-medium hover:bg-indigo-700 transition-colors shadow-sm"
-              >
-                <Printer className="w-4 h-4" />
-                Cetak Tag Kod QR (PDF)
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-    </div>
-  );
-}
+            );
+        }
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
